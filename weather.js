@@ -6,7 +6,7 @@ var WunderNodeClient = require('wundernode');
 var URL = require('url');
 var express = require('express');
 //developer key
-var apikey = 'a222a598eb4712f5';
+var apikey = 'b1e1e4ef3bcded1b';
 //debug to see what is happening
 var debug = true;
 //Create client

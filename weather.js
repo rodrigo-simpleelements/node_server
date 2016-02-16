@@ -25,22 +25,23 @@ var cronJob = cron.job(' 00 00 23 * * * ', function(){
                         	console.log('getting forecast for loc: ' + obj[i] );
                         	wunder.hourly10day(obj[i], function(err, object){
                                 	if(err){
-                                        	return ;
+                                        	console.log("error in zipcode") ;
                                 	}
                         	});
                 	}
                 	//res.end("success server.js");
         	});
-		var cities = new PostgreClient.getCities(function(err, obj){
-                        if(err){
+		var cities = new PostgreClient.getCities(function(err, obj1){
+			if(err){
                                 console.log('errors: ' + err);
                                 //res.end("Error processing query string: " + queryData.query);
                         }
-                        for( var i = 0; i< obj.length;i++){
-                                console.log('getting forecast for loc: ' + obj[i] );
-                                wunder.hourly10day(obj[i], function(err, object){
+			console.log("obj:" + obj1);
+                        for( var i = 0; i< obj1.length;i++){
+                                console.log('getting forecast for loc: ' + obj1[i] );
+                                wunder.hourly10day(obj1[i], function(err, object){
                                         if(err){
-                                                return ;
+                                               console.log("error in cities") ;
                                         }
                                 });
                         }

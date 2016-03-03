@@ -7,7 +7,7 @@ var express = require('express');
 var cron = require('cron');
 var async = require('async');
 
-var cronJob = cron.job(' 0 30 */6 * * * ', function(){
+//var cronJob = cron.job(' 0 30 */6 * * * ', function(){
 var zones;
 var sensors;
 var popAverage;
@@ -253,43 +253,45 @@ var getTimeWithoutRestrictions = function(datetime, duration, zone, callback){
 		if(err){
 			callback(err, null);
 		}else{
-			PostgreClient.getSchedulesByDate(datetime, unit, function(err, restrictionsArray){
-					restrictions = restrictionsArray;
-					var startSchedule = datetime.split(" ")[1].split(":");
-					var dateFormatted = datetime.split(" ")[0];
-					var scheduleStartDate = new Date(dateFormatted.split("-")[0], dateFormatted.split("-")[1] - 1, dateFormatted.split("-")[2], startSchedule[0],startSchedule[1],startSchedule[2], 0);
-					 if (typeof restrictions !== 'undefined' && restrictions.length > 0) {
-						 //get date, time and duration for restriction and calculate when restriction is finished
-						 var lastRestriction = restrictions[0];
-						 var restrictionDuration = lastRestriction.split(',')[1];
-						 var restrictionTime = lastRestriction.split(',')[0];
-						 //console.log(zone + " " + lastRestriction);
-						 //calculate end of restriction
-						 var startRestriction = new Date(scheduleStartDate.getFullYear(), scheduleStartDate.getMonth(), scheduleStartDate.getDate(), restrictionTime.split(':')[0], restrictionTime.split(':')[1], restrictionTime.split(':')[2]);
-						 var endRestriction = new Date(startRestriction.getTime() + restrictionDuration*60000);
-						 if(endRestriction.getDate() == startRestriction.getDate()){
-								//I can set a schedule on the day that I wanted
-								//console.log(formatDate(startRestriction) + " " + formatDate(endRestriction));
-								callback(null, formatDate(endRestriction));
-						 }else{
-							 controlIterations++;
-							 //check iterations to avoid eternal calls to recursive function
-							 if(controlIterations <= 7){
-								var nextDay = new Date(scheduleStartDate.getTime() +86400000);
-								//console.log(nextDay);
-								getTimeWithoutRestrictions(formatDate(nextDay), duration, zone, callback);
-							 }else{
-								 console.log("Unable to find a time for scheduling zone:" + zone);
-								 callback("Unable to find a time for scheduling", null);
-							 }
-						}
-					 }else{
-							scheduleStartDate.setHours(4, 0, 0);
-							callback(null, formatDate(scheduleStartDate));
-					 }
-			});
-		}
-	});
+            PostgreClient.getTimeZoneByUnitId(unit, function(err, timezone){
+                PostgreClient.getSchedulesByDate(datetime, timezone, unit, function(err, restrictionsArray){
+                        restrictions = restrictionsArray;
+                        var startSchedule = datetime.split(" ")[1].split(":");
+                        var dateFormatted = datetime.split(" ")[0];
+                        var scheduleStartDate = new Date(dateFormatted.split("-")[0], dateFormatted.split("-")[1] - 1, dateFormatted.split("-")[2], startSchedule[0],startSchedule[1],startSchedule[2], 0);
+                        if (typeof restrictions !== 'undefined' && restrictions.length > 0) {
+                            //get date, time and duration for restriction and calculate when restriction is finished
+                            var lastRestriction = restrictions[0];
+                            var restrictionDuration = lastRestriction.split(',')[1];
+                            var restrictionTime = lastRestriction.split(',')[0];
+                            //console.log(zone + " " + lastRestriction);
+                            //calculate end of restriction
+                            var startRestriction = new Date(scheduleStartDate.getFullYear(), scheduleStartDate.getMonth(), scheduleStartDate.getDate(), restrictionTime.split(':')[0], restrictionTime.split(':')[1], restrictionTime.split(':')[2]);
+                            var endRestriction = new Date(startRestriction.getTime() + restrictionDuration*60000);
+                            if(endRestriction.getDate() == startRestriction.getDate()){
+                                //I can set a schedule on the day that I wanted
+                                //console.log(formatDate(startRestriction) + " " + formatDate(endRestriction));
+                                callback(null, formatDate(endRestriction));
+                            }else{
+                                controlIterations++;
+                                //check iterations to avoid eternal calls to recursive function
+                                if(controlIterations <= 7){
+                                    var nextDay = new Date(scheduleStartDate.getTime() +86400000);
+                                    //console.log(nextDay);
+                                    getTimeWithoutRestrictions(formatDate(nextDay), duration, zone, callback);
+                                }else{
+                                    console.log("Unable to find a time for scheduling zone:" + zone);
+                                    callback("Unable to find a time for scheduling", null);
+                                }
+                            }
+                         }else{
+                                scheduleStartDate.setHours(4, 0, 0);
+                                callback(null, formatDate(scheduleStartDate));
+                         }
+                     });
+                });
+            }
+        });
 }
 
 function formatDate(date) {
@@ -303,5 +305,5 @@ function formatDate(date) {
 
 	return [year, month, day].join('-') + " " + d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
 }
-});
-cronJob.start();
+//});
+//cronJob.start();

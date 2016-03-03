@@ -7,7 +7,7 @@ var express = require('express');
 var cron = require('cron');
 var async = require('async');
 
-//var cronJob = cron.job(' 0 30 */6 * * * ', function(){
+var cronJob = cron.job(' 0 30 */6 * * * ', function(){
 var zones;
 var sensors;
 var popAverage;
@@ -305,5 +305,5 @@ function formatDate(date) {
 
 	return [year, month, day].join('-') + " " + d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
 }
-//});
-//cronJob.start();
+});
+cronJob.start();

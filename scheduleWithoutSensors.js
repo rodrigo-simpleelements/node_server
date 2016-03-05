@@ -107,7 +107,11 @@ async.series([
                                 }
                             }
                          }else{
-                                scheduleStartDate.setHours(4, 0, 0);
+				var startHour = 4 - timezone;
+                                if(startHour<0){
+                                        startHour = 24 - Math.abs(startHour);
+                                }
+                                scheduleStartDate.setHours(startHour, 0, 0);
                                 callback(null, formatDate(scheduleStartDate));
                          }
                      });

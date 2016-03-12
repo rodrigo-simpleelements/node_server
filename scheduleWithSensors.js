@@ -121,128 +121,141 @@ var insertScheduleFromSensorData = function(zone, sensor, callback){
 											console.log("Error: " + err);
 											callback();
 										}else{
-											irrigationNeed = irrigation;
-											//console.log(irrigation);
-											if(humidity != 0 && humidityAverage != 100){
-												decisionFactor = (100 - humidity)*0.2*tempAverage*0.2*irrigationNeed*0.2/((100 - humidityAverage)*0.1*0.2*(100 - popAverage));
-											}
-											if(systemType == 2){
-												//case  maintain
-												decisionFactor = decisionFactor*0.7;
-											}
-											//console.log(decisionFactor);
-											var today = new Date();
-											if(decisionFactor <=30 && decisionFactor > 0){
-												//schedule for next 4 am     
-												//console.log("4am");
-												var dateToCompare = new Date();
-												getTimeWithoutRestrictions(formatDate(dateToCompare),decisionFactor,zone, function(err, newDate){
-													if(err){
-														//console.log("Error: " + err);
-														dateToCompare = null;
-													}else{
-														dateToCompare = newDate;
-														
-														PostgreClient.insertSchedule(dateToCompare, decisionFactor, zone, function(err, reply){									
-															if(err){
-																console.log("Error: " + err);
-																callback();
-															}else{
-																console.log(reply + ' ' + zone);
-																callback();
-															}
-														});
-													}
-												});
-											}else if(decisionFactor>30 && decisionFactor<=50){
-												//set schedule for next 24 hours
-												//console.log("24hrs");
-												var tomorrow = new Date();
-												tomorrow.setDate(today.getDate() + 1);
-												getTimeWithoutRestrictions(formatDate(tomorrow),decisionFactor,zone, function(err, next24){
-													if(err){
-														//console.log("Error: " + err);
-														tomorrow = null;
-														
-													}else{
-														
-														tomorrow = next24;
-														//console.log(zone + " " + tomorrow);
-																
-													}
-													PostgreClient.insertSchedule(tomorrow, decisionFactor, zone, function(err, reply){									
-														if(err){
-															console.log("Error: " + err);
-															callback();
-														}else{
-															console.log(reply + ' ' + zone);
-															callback();
-														}
-													});
-												});
-											}else if(decisionFactor>50 && decisionFactor<=70){
-												//schedule for next 48 hours
-												//console.log("48hrs");
-												var afterTomorrow = new Date();
-												afterTomorrow.setDate(today.getDate() +2);
-												getTimeWithoutRestrictions(formatDate(afterTomorrow),decisionFactor,zone, function(err, next48){
-													if(err){
-														//console.log("Error: " + err);
-														afterTomorrow = null;
-														
-													}else{
-														afterTomorrow = next48;
-														//console.log(zone + " " + tomorrow);
-													}
-													PostgreClient.insertSchedule(afterTomorrow, decisionFactor, zone, function(err, reply){									
-														if(err){
-															console.log("Error: " + err);
-															callback();
-														}else{
-															//console.log(reply + ' ' + zone);
-															callback();
-														}
-													});
-												});
-											}else{
-												//schedule next 72 hours
-												var threeDays = new Date();
-												threeDays.setDate(threeDays.getDate() +3);
-												if(typeof decisionFactor === 'undefined' || isNaN(decisionFactor) || decisionFactor == 0){
-													decisionFactor = 15;
-												}
-												getTimeWithoutRestrictions(formatDate(threeDays),decisionFactor,zone, function(err, next72){
-													if(err){
-														//console.log("Error: " + err);
-														threeDays = null;
-														
-													}else{
-														
-														threeDays = next72;
-														//console.log(zone + " " + tomorrow);
-																
-													}
-													PostgreClient.insertSchedule(threeDays, decisionFactor, zone, function(err, reply){									
-														if(err){
-															console.log("Error: " + err);
-															callback();
-														}else{
-															console.log(reply + ' ' + zone);
-															callback();
-														}
-													});
-												});
-											}
-										}
-									});
-								}
-							});
-						}
-					});
-				}
-			});
-		}
-	});
+                                                irrigationNeed = irrigation;
+                                                PostgreClient.getRuntimeCycles(zone, function(err, cycle){
+                                                    if(humidity != 0 && humidityAverage != 100){
+                                                        decisionFactor = (100 - humidity)*0.2*tempAverage*0.2*irrigationNeed*0.2/((100 - humidityAverage)*0.1*0.2*(100 - popAverage));
+                                                    }
+                                                    if(systemType == 2){
+                                                        //case  maintain
+                                                        decisionFactor = decisionFactor*0.7;
+                                                    }
+						    if(typeof decisionFactor === 'undefined' || isNaN(decisionFactor)){
+                                                                decisionFactor = 0;
+                                                    }
+                                                    var iterations = decisionFactor/cycle;
+						    if(iterations == 0){
+					            	iterations = 1;
+						   }
+                                                    for( var i = 0; i<iterations; i++){
+                                                        var today = new Date();
+                                                        if(decisionFactor <=30 && decisionFactor > 0){
+                                                            //schedule for next 4 am     
+                                                            //console.log("4am");
+							    if(i == iterations -1){
+							    	cycle = decisionFactor - cycle*i; 
+							    }
+                                                            var dateToCompare = new Date();
+                                                            getTimeWithoutRestrictions(formatDate(dateToCompare),cycle,zone, function(err, newDate){
+                                                                if(err){
+                                                                    //console.log("Error: " + err);
+                                                                    dateToCompare = null;
+                                                                }else{
+                                                                    dateToCompare = newDate;
+                                                                    
+                                                                    PostgreClient.insertSchedule(dateToCompare, cycle, zone, function(err, reply){									
+                                                                        if(err){
+                                                                            console.log("Error: " + err);
+                                                                            callback();
+                                                                        }else{
+                                                                            console.log(reply + ' ' + zone);
+                                                                            callback();
+                                                                        }
+                                                                    });
+                                                                }
+                                                            });
+                                                        }else if(decisionFactor>30 && decisionFactor<=50){
+                                                            //set schedule for next 24 hours
+                                                            //console.log("24hrs");
+                                                            var tomorrow = new Date();
+                                                            tomorrow.setDate(today.getDate() + 1);
+                                                            getTimeWithoutRestrictions(formatDate(tomorrow),cycle,zone, function(err, next24){
+                                                                if(err){
+                                                                    //console.log("Error: " + err);
+                                                                    tomorrow = null;
+                                                                    
+                                                                }else{
+                                                                    
+                                                                    tomorrow = next24;
+                                                                    //console.log(zone + " " + tomorrow);
+                                                                            
+                                                                }
+                                                                PostgreClient.insertSchedule(tomorrow, cycle, zone, function(err, reply){									
+                                                                    if(err){
+                                                                        console.log("Error: " + err);
+                                                                        callback();
+                                                                    }else{
+                                                                        console.log(reply + ' ' + zone);
+                                                                        callback();
+                                                                    }
+                                                                });
+                                                            });
+                                                        }else if(decisionFactor>50 && decisionFactor<=70){
+                                                            //schedule for next 48 hours
+                                                            //console.log("48hrs");
+                                                            var afterTomorrow = new Date();
+                                                            afterTomorrow.setDate(today.getDate() +2);
+                                                            getTimeWithoutRestrictions(formatDate(afterTomorrow),cycle,zone, function(err, next48){
+                                                                if(err){
+                                                                    //console.log("Error: " + err);
+                                                                    afterTomorrow = null;
+                                                                    
+                                                                }else{
+                                                                    afterTomorrow = next48;
+                                                                    //console.log(zone + " " + tomorrow);
+                                                                }
+                                                                PostgreClient.insertSchedule(afterTomorrow, cycle, zone, function(err, reply){									
+                                                                    if(err){
+                                                                        console.log("Error: " + err);
+                                                                        callback();
+                                                                    }else{
+                                                                        //console.log(reply + ' ' + zone);
+                                                                        callback();
+                                                                    }
+                                                                });
+                                                            });
+                                                        }else{
+                                                            //schedule next 72 hours
+                                                            var threeDays = new Date();
+                                                            threeDays.setDate(threeDays.getDate() +3);
+                                                            //console.log(decisionFactor);
+                                                            if(decisionFactor == 0){
+                                                                decisionFactor = 15;
+                                                            }
+                                                            getTimeWithoutRestrictions(formatDate(threeDays),cycle,zone, function(err, next72){
+                                                                if(err){
+                                                                    //console.log("Error: " + err);
+                                                                    threeDays = null;
+                                                                    
+                                                                }else{
+                                                                    
+                                                                    threeDays = next72;
+                                                                    //console.log(zone + " " + tomorrow);
+                                                                            
+                                                                }
+                                                                PostgreClient.insertSchedule(threeDays, cycle, zone, function(err, reply){									
+                                                                    if(err){
+                                                                        console.log("Error: " + err);
+                                                                        callback();
+                                                                    }else{
+                                                                        console.log(reply + ' ' + zone);
+                                                                        callback();
+                                                                    }
+                                                                });
+                                                            });
+                                                        }
+                                                    }
+                                                });
+                                        }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    }
+});
 }
 
 		
@@ -311,3 +324,4 @@ function formatDate(date) {
 }
 });
 cronJob.start();
+

@@ -13,7 +13,7 @@ var debug = true;
 var wunder = new WunderNodeClient(apikey, debug, 10, 'minute');
 var cron = require('cron');
 
-var cronJob = cron.job(' 00 00 23 * * * ', function(){
+//var cronJob = cron.job(' 00 00 23 * * * ', function(){
 	var populateWeather = function(){
         	//look for every zipcode in database first 
         	var zipcodes = new PostgreClient.getZipCodes(function(err, obj){
@@ -47,8 +47,25 @@ var cronJob = cron.job(' 00 00 23 * * * ', function(){
                         }
                         //res.end("success server.js");
                 });
+		var coordinates = new PostgreClient.getCoordinates(function(err, obj1){
+            if(err){
+                console.log('errors: ' + err);
+                //res.end("Error processing query string: " + queryData.query);
+            }
+            console.log("obj:" + obj1);
+            for( var i = 0; i< obj1.length;i++){
+                console.log('getting forecast for loc: ' + obj1[i] );
+                wunder.hourly10day(obj1[i], function(err, object){
+                    if(err){
+                        console.log("error in cities") ;
+                    }
+                });
+            }
+                        //res.end("success server.js");
+         });
 
 	}
 	populateWeather();
-});
-cronJob.start();
+//});
+//cronJob.start();
+

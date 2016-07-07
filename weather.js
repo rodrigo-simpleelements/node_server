@@ -13,7 +13,7 @@ var debug = true;
 var wunder = new WunderNodeClient(apikey, debug, 10, 'minute');
 var cron = require('cron');
 
-//var cronJob = cron.job(' 00 00 23 * * * ', function(){
+var cronJob = cron.job(' 00 00 23 * * * ', function(){
 	var populateWeather = function(){
         	//look for every zipcode in database first 
         	var zipcodes = new PostgreClient.getZipCodes(function(err, obj){
@@ -66,6 +66,6 @@ var cron = require('cron');
 
 	}
 	populateWeather();
-//});
-//cronJob.start();
+});
+cronJob.start();
 

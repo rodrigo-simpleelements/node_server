@@ -1,9 +1,7 @@
 ﻿#!/usr/bin/env node
 //script to generate automated schedules
 // Rodrigo Alvez: rodrigo@simpleelements.us
-var PostgreClient = require('postgresql');
-var URL = require('url');
-var express = require('express');
+var PostgreClient = require('./modulos/postgresql');
 var cron = require('cron');
 var async = require('async');
 

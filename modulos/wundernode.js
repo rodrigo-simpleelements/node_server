@@ -3,7 +3,6 @@
 // Rodrigo Alvez: rodrigo@simpleelements.us
 var PostgreClient = require('./postgresql.js');
 var request = require('request');
-var util = require('util');
 var RateLimiter = require('limiter').RateLimiter;
 //rate of the requests
 var rateCount = 100;

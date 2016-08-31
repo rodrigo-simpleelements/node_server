@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 //script to insert sensors information
 // Rodrigo Alvez: rodrigo@simpleelements.us
-var PostgreClient = require('postgresql');
+var PostgreClient = require('./modulos/postgresql');
 var EventSource = require('eventsource');
 var sync = require('synchronize');
 var nodemailer = require('nodemailer');
 var ejs = require('ejs');
-var CustomMail = require('./node_modules/email/config/custom-mail');
+// var CustomMail = require('./node_modules/email/config/custom-mail');    // no existe esta libreria
 
 var fiber = sync.fiber;
 var await = sync.await;

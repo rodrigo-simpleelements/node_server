@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 //script to insert controller schedule information
 // Rodrigo Alvez: rodrigo@simpleelements.us
-var PostgreClient = require('postgresql');
+var PostgreClient = require('./modulos/postgresql');
 var EventSource = require('eventsource');
 var sync = require('synchronize');
 

@@ -1,0 +1,22 @@
+{
+  "name": "riego",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "start": "node app"
+  },
+  "author": "",
+  "dependencies": {
+    "async": "^2.0.1",
+    "cron": "^1.1.0",
+    "crypto": "0.0.3",
+    "ejs": "^2.5.1",
+    "eventsource": "^0.2.1",
+    "http": "0.0.0",
+    "limiter": "^1.1.0",
+    "nodemailer": "^2.5.0",
+    "pg": "^6.1.0",
+    "request": "^2.74.0",
+    "synchronize": "^0.9.15"
+  }
+}

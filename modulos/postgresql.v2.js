@@ -142,7 +142,7 @@ var pgApi = {
          
             return {
                 precipitation: precipitation / rows.length,
-                qpf: qpf / rows.length,
+                qpf: qpf,   // suma no promedio
                 humidity: humidity / rows.length
             }
         }
@@ -166,7 +166,7 @@ var pgApi = {
            
             return {
                 precipitation: precipitation / rows.length,
-                qpf: qpf / rows.length,
+                qpf: qpf,
                 humidity: humidity / rows.length
             }
         }

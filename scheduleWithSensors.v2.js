@@ -198,12 +198,13 @@ var runJob = function(){
                     //  Si el QPF (inches) total del día supera o iguala la cantidad necesaria para llevar la humedad a un (no 100%) (valor definido por el setting de la zona, lush lawn que sea 90% y maintain que sea 60% o lo podemos dejar configurable), salir del algoritmo.                    
                     var reqHumidity = SYSTEM_TYPE_SETTINGS[zone.system_type_alias].reqHumidity;
 
-                    // Como se pondera el QPF con humidity?
-                    // Por ahora lo dejo como humidity solo
-                    // TODO: realizar el calculo de humedad + qpf
-                    var humAndQPF = f24hs.humidity;
-
-                    if (humAndQPF >= reqHumidity){
+                    
+                    // TODO: revisar el chequeo de QPF ?
+                    
+                    if(zone.irrigation_need == null){
+                        finish("Zone irrigation_need is null");
+                    }
+                    else if (f24hs.qpf >= zone.irrigation_need){
                         finish("No es necesario regar, humidity + QPF >= req humidity");
                     }
                     else{

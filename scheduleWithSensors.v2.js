@@ -1,9 +1,7 @@
 #!/usr/bin/env node
-//script to generate automated schedules
-// Rodrigo Alvez: rodrigo@simpleelements.us
+
 var pg = require('./modulos/postgresql.v2');
-var cron = require('cron');
-var async = require('async');
+
 
 //* PoP: Probabilidad de precipitación (lluvia) para ese día.
 //* QPF: Quantitive Precipitation Forecast, es la cantidad de agua que va a caer en una hora. Para el algoritmo yo entrego este dato para todo el día.
@@ -12,43 +10,210 @@ var async = require('async');
 //* tempAvg: Promedio de temperatura del suelo medido por el sensor para la última semana.
 //* settings: Configuración de pasto (maintain, lush o standard), este dato indica qué tan alto le gusta el pasto a la persona.
 
+/*
+
+Para decidir si riego en ese día o no:
+
+    Obtener las zonas que están configuradas como automáticas.
+    Obtener la probabilidad de lluvia para el día (PoP).
+        Si la probabilidad de lluvia está por encima de un 70%, obtener el QPF para el día entero y el incremento de humedad.
+            Si el QPF (inches) total del día supera o iguala la cantidad necesaria para llevar la humedad a un (no 100%) (valor definido por el setting de la zona, lush lawn que sea 90% y maintain que sea 60% o lo podemos dejar configurable), salir del algoritmo.
+            Caso contrario, almacenar y ponderar valor.
+        Si la probabilidad de lluvia está por debajo de un 70%, no considerar ni PoP ni QPF.
+    Obtener la humedad leída (humidity).
+    Obtener el promedio de la temperatura de la semana leída del sensor (tempAvg).
+    Obtener la pérdida de humedad promedio (AvgHumidityLoss)
+        Si la humidity es mayor a un 80% y la AvgHumidityLoss es menor a un 20%, salir del algoritmo -> No es necesario regar.
+    Obtener la configuración para el pasto (Maintain, Standard, Lush). Asignamos valores para las configuraciones: Maintain = 1,25, Standard=1 y Lush= 1,5
+    Generar calculo:
+        Si están todos los factores: % de necesidad de riego = QPF*0,2 + humidity *0,2 + tempAvg* 0,1 + AvgHumidityLoss * 0,2 + settings*0,2.
+        Si no está el QPF: % de necesidad de riego = humidity*0,3 + tempAvg*0,1 + AvgHumidityLoss*0,3 + settings*0,2
+    Si la necesidad de riego queda por encima del 40% regamos, caso contrario no. (Hiciste un par de scenarios para ver cuando se cumple el 40%?)
+    El riego se ejecuta entre las 4AM y 8AM hora local.
+
+
+Para ver cuánto riego:
+
+    Obtengo la última humedad medida del sensor.
+    Obtengo el porcentaje de humedad en que se incrementa para cada ciclo de la tabla de zonas.
+        Si no hay valor, verificar si hay riegos previos.
+            Si hay riegos previos, tomar el último (hora de inicio y fin), tomar la humedad al inicio y al fin del riego de la tabla de sensores; restar e insertar valor en la tabla de zonas.
+            Si no hay riegos, fijar un ciclo cuanto antes, manteniendo la restricción de las 4AM a las 8AM.
+        Si hay valor, tomar en cuenta ese valor de incremento de humedad por ciclos, ver cuántos ciclos se requieren para llegar a un (no 100%) (valor definido por el setting de la zona, lush lawn que sea 90% y maintain que sea 60% o lo podemos dejar configurable) y programarlos entre las 4AM y 8AM hora local.
+
+
+IDEA: si en vez de ejecutar cada periodos tan largos, y tener otro cron que elimine schedules porque hubieron cambios en la humedad/precipitaciones
+ para "corregir" schedules creados anteriormente, no sera mejor ejecutar este codigo mas seguido, por ej, cada 30 min, y que cada vez que ejecute que elimine schedules
+ pendientes anteriores asi los nuevos schedules son siempre mas precisos que los anteriores?
+
+ */
+
+// Por ahora definido en codigo
+// Pero idealmente deberia venir de la base
+// Mapeo por alias ya que code es siempre null en los datos actuales
+// TODO: Ver si mover estos valores a la base, preferentemente se obtienen en la consulta de zonas que ya trae bastante informacion.
+var SYSTEM_TYPE_SETTINGS = {
+    'Lush': {
+        reqHumidity: 90,
+        setting: 1.5 
+    },
+    'Maintain':{
+        reqHumidity: 60,
+        setting: 1.25,
+    },
+    'Standard':{
+        reqHumidity: 90,
+        setting: 1,
+    }
+}
 
 var runJob = function(){
     // Get zones
     var zones = pg.getZones();
 
-    // Procesa una zona y realiza todas las operaciones necesarias.
+    // Process a zone and performs all related tasks
     var processZone = function(zone) {
 
-        console.log("Procesando zona: ", zone.id);
+        console.log("Processing zone: ", zone.id);
         return new Promise(function (resolve, reject) {
-            // get zone forecast next 24hs and current
-            var f24hs = pg.getForecastNext24h(zone.zip_code);
-            var fNow = pg.getForecastNow(zone.zip_code);
 
+            // Helper to finish/resolve
             var finish = function(data){
                 resolve({zone: zone, data:data});
             }
 
-            Promise.all([f24hs, fNow]).then(
-                function(data){
-                    f24hs = data[0];
-                    fNow = data[1];
+            var finishError = function(data){
+                reject({zone: zone, data:data});
+            }
+           
+            // get zone forecast next 24hs
+            pg.getForecastNext24h(zone.zip_code).then(function(f24hs){
 
-                    // Si la probabilidad de lluvia está por debajo de un 70%, no considerar ni PoP ni QPF.
-                    // Esta bien considerar esto al principio?
-                    if(fNow.precipitation < 70){
-                        finish("La probabilidad de lluvia es muy baja.");
-                        return;
-                    }
-
-                    //  Si la probabilidad de lluvia está por encima de un 70%, obtener el QPF para el día entero y el incremento de humedad.
-                        //  Si el QPF (inches) total del día supera o iguala la cantidad necesaria para llevar la humedad a un (no 100%) (valor definido por el setting de la zona, lush lawn que sea 90% y maintain que sea 60% o lo podemos dejar configurable), salir del algoritmo.
+                var paso2 = function(qpf) {
+                    // Obtener la humedad leída (humidity).
+                    // Obtener el promedio de la temperatura de la semana leída del sensor (tempAvg).
+                    // Obtener la pérdida de humedad promedio (AvgHumidityLoss)
+                    // TODO: Revisar: Algunos datos de probabilidad vienen de 0-100 y otros 0 a 1, pueden haber inconsistencias en los calculos
                     
-                    finish("No implementado");
+                    Promise.all([pg.getHumidity(zone.id_sensor), pg.getAvgTemperature(zone.id_sensor), pg.getAvgHumidityLoss(zone.id_sensor), pg.getLastIrrigation(zone.id, zone.sensor_id)]).then(function(data){
+                        
+                        var hum = data[0];
+                        var avgTemp = data[1];
+                        var avgHumLoss = data[2];
+                        var lastIrrigation = data[3];
+                    
+                        // Si la humidity es mayor a un 80% y la AvgHumidityLoss es menor a un 20%, salir del algoritmo -> No es necesario regar.
+                        if(hum > 80 && avgHumLoss < 20){
+                            finish("No es necesario regar, humidity > 80 and avg humidity loss < 20");
+                        }
+                        else{
+                            
+                            // Obtener la configuración para el pasto (Maintain, Standard, Lush). Asignamos valores para las configuraciones: Maintain = 1,25, Standard=1 y Lush= 1,5
+                            // TODO: DUDA: Estos valores se corresponden con irrigation_need ? Por ahora uso los hardcodeados pero si corresponde con irrigation_need ya esta en la variable zone
+
+                            var necsr;                            
+                            var setting = SYSTEM_TYPE_SETTINGS[zone.system_type_alias].setting;
+
+                            // TODO: Revisar calculos
+                            if(qpf != null){
+                                //  Si están todos los factores: % de necesidad de riego = QPF*0,2 + humidity *0,2 + tempAvg* 0,1 + AvgHumidityLoss * 0,2 + settings*0,2.
+                                necsr = qpf * 0.2 + hum * 0.2 + avgTemp * 0.1 + avgHumLoss * 0.2 + setting * 0.2;
+                            }
+                            else{
+                                // Si no está el QPF: % de necesidad de riego = humidity*0,3 + tempAvg*0,1 + AvgHumidityLoss*0,3 + settings*0,2
+                                necsr = hum * 0.3 + avgTemp * 0.1 + avgHumLoss * 0.3 + setting * 0.2;
+                            }
+
+                            // Si la necesidad de riego queda por encima del 40% regamos, caso contrario no.
+                            if(necsr > 40){
+
+                                
+                                // Saber cuanto regar
+                                // Obtengo la última humedad medida del sensor --> var hum
+                                
+                                // Obtengo el porcentaje de humedad en que se incrementa para cada ciclo de la tabla de zonas.                                
+                                var increasePerCycle = zone.moisture_increase_per_cycle;
+
+                                // Si hay valor, tomar en cuenta ese valor de incremento de humedad por ciclos, ver cuántos ciclos se requieren para llegar a un (no 100%)
+                                // (valor definido por el setting de la zona, lush lawn que sea 90% y maintain que sea 60% o lo podemos dejar configurable) y programarlos entre las 4AM y 8AM hora local.                                
+                                var reqHumidity = SYSTEM_TYPE_SETTINGS[zone.system_type_alias].reqHumidity;
+
+                                
+                                if (increasePerCycle == null){
+
+                                    //Si no hay valor, verificar si hay riegos previos.
+                                    if(lastIrrigation != null){
+                                        //Si hay riegos previos, tomar el último (hora de inicio y fin), tomar la humedad al inicio y al fin del riego de la tabla de sensores; restar e insertar valor en la tabla de zonas.
+
+                                        increasePerCycle = lastIrrigation.after - increasePerCycle.before;
+
+                                        // Insertar en tabla de zonas. No importa el resultado por lo que no escucho el resultado de la promise
+                                        pg.updateIncreasePerCycle(zone.id, increasePerCycle);
+                                    }
+                                    else{
+                                        //Si no hay riegos, fijar un ciclo cuanto antes, manteniendo la restricción de las 4AM a las 8AM.
+                                        // Que valor asignamos al ciclo ? Por ahora asumo que necesito un unico ciclo
+
+                                        increasePerCycle = reqHumidity;
+                                    } 
+
+                                }
+
+                                // TODO: 
+                                // como calcular cuantos ciclos necesito? Si uso la humedad actual puedo tener problemas, por ej:
+                                // var missingHumidity = (reqHumidity - hum);, Esto puede dar negativo... Todas las condiciones anteriores me aseguran de que no sea asi?
+                                // o se usa el valor de necesidad de riego?
+                                // O los ciclos es ignorando al humedad actual?
+
+                                var reqCycles = Math.ceil(reqHumidity / increasePerCycle);
+
+                                for (var i = 0; i < reqCycles; i++ ){
+                                    //TODO: Insertar schedule ? segun zone.max_runtime_minutes ?
+
+                                }
+
+
+                                finish("Consulta de insert en schedule no implementado.");
+                            }
+                            else{
+                                finish("No es necesario regar, necesidad de riego es < 40%");
+                            }
+
+
+                        }
+
+                    }).catch(function(err){finishError(err);});
 
                 }
-            ).catch(function(err){reject(err);});
+
+
+                // Si la probabilidad de lluvia está por debajo de un 70%, no considerar ni PoP ni QPF.
+                if(f24hs.precipitation < 70){
+                    paso2(null);
+                }
+                else{
+
+
+                    //  Si la probabilidad de lluvia está por encima de un 70%, obtener el QPF para el día entero y el incremento de humedad.
+                    //  Si el QPF (inches) total del día supera o iguala la cantidad necesaria para llevar la humedad a un (no 100%) (valor definido por el setting de la zona, lush lawn que sea 90% y maintain que sea 60% o lo podemos dejar configurable), salir del algoritmo.                    
+                    var reqHumidity = SYSTEM_TYPE_SETTINGS[zone.system_type_alias].reqHumidity;
+
+                    // Como se pondera el QPF con humidity?
+                    // Por ahora lo dejo como humidity solo
+                    // TODO: realizar el calculo de humedad + qpf
+                    var humAndQPF = f24hs.humidity;
+
+                    if (humAndQPF >= reqHumidity){
+                        finish("No es necesario regar, humidity + QPF >= req humidity");
+                    }
+                    else{
+                        paso2(f24hs.qpf);
+                    }
+                }
+
+
+            }).catch(function(err){finishError(err);})
+            
 
         });
     }
@@ -59,18 +224,13 @@ var runJob = function(){
         for (var i = 0; i < data.length; i++){            
             processZone(data[i]).then(function(r){
                 console.log("Zone processed: ", r.zone.id, r.data)
-            }).catch(function(err){console.error("Error processing zone: ", err)});
+            }).catch(function(err){console.error("Error processing zone: ", err.zone.id, err.data)});
 
         }
 
     }).catch(function(err){console.error("Error getting zones: ", err)});
 }
 
-var cronJob = cron.job(' 0 30 */6 * * * ', function () {
-
-    
-});
-cronJob.start();
 
 var r = {
     runJob: runJob

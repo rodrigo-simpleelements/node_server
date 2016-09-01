@@ -25,7 +25,7 @@ var logError = function (msg, e) {
 var runQuery = function (query, args, callback, errorMsg) {
     return new Promise(function (resolve, reject) {
         pool.query(query, args)
-            .then(data => { try { resolve( callback ? callback(data.rows) : data.rows); } catch (err) { logError(errorMsg, err); reject(err) } })
+            .then(data => { try { resolve( callback ? callback(data.rows) : data.rows); } catch (err) { reject(err) } })
             .catch(err => { logError(errorMsg, err); reject(err) })
     });
 }
@@ -44,17 +44,20 @@ var pgApi = {
     getZones: function () {
         var query = `
         select 
-            z.id, z.id_sensor, z.id_unit, z.id_plants_type, z.id_soil_type, z.id_system_type, z.id_slope_type, z.id_shade, z.alias as zone_alias, z.zone_number, 
+            z.id, z.id_sensor, z.id_unit, z.id_plants_type, z.id_soil_type, z.id_system_type, z.id_slope_type, z.id_shade, z.alias as zone_alias, z.zone_number, z.moisture_increase_per_cycle,
             u.zip_code, u.timezone,
             t.alias as system_type_alias, t.code as system_type_code, 
             c.max_runtime_minutes,
             sp.irrigation_need  
                 
-            from zones z 
-            JOIN units u ON z.id_unit = u.id 
-            JOIN system_types t ON id_system_type = t.id
-            LEFT JOIN soil_sprinklers_slope_data c on z.id_soil_type = c.id_soil_type AND z.id_slope_type = c.id_slope_types AND z.id_sprinkler = c.id_sprinklers
-            LEFT JOIN soil_plants_data sp ON z.id_soil_type = sp.id_soil_type AND z.id_plants_type = sp.id_plants_type
+                from zones z 
+                JOIN units u ON z.id_unit = u.id 
+                JOIN sensors s ON z.id_sensor = s.id and s.id_unit = u.id
+                JOIN system_types t ON id_system_type = t.id
+                LEFT JOIN soil_sprinklers_slope_data c on z.id_soil_type = c.id_soil_type AND z.id_slope_type = c.id_slope_types AND z.id_sprinkler = c.id_sprinklers
+                LEFT JOIN soil_plants_data sp ON z.id_soil_type = sp.id_soil_type AND z.id_plants_type = sp.id_plants_type
+
+                WHERE z.is_enabled = true AND z.manual = false and u.is_enabled = true and s.is_enabled = true
         `
 
         return runQuery(query, null, null, "Error on 'getZones'");
@@ -63,18 +66,16 @@ var pgApi = {
     getHumidity: function (idSensor) {
 
         var f = function (rows) {
+
             if (rows.length == 0) {
-                var msg = "No data from getHumidity";
-                logError(msg);
-                reject(msg);
-                return;
+                throw Error(idSensor + " no data from getHumidity");
             }
 
             // Codigo copiado de la consulta original
             var difference = Math.abs(new Date() - rows[0].measure_date) / 36e5;
             if (difference > 3) {
-                console.log(idSensor + " is not retrieving information for automatic schedule");
-                return 100;
+                throw Error(idSensor + " is not retrieving humidity information for automatic schedule");
+                
             }
             else {
                 return rows[0].humidity;
@@ -89,6 +90,7 @@ var pgApi = {
 
         var f = function (rows) {
             
+            // TODO: Revisar si el calculo es correcto
             var sum = 0;
             for (var i = 0; i < rows.length - 1; i++) {
 
@@ -111,14 +113,6 @@ var pgApi = {
 
     getAvgTemperature: function(idSensor){
 
-        var todayAux = new Date();
-        var daysAgoAux = new Date();
-        daysAgoAux.setDate(todayAux.getDate() - 7);
-
-        //cast dates to strings
-        var daysAgo = daysAgoAux.getFullYear() + "-" + (daysAgoAux.getMonth() + 1) + "-" + daysAgoAux.getDate();
-        var today = todayAux.getFullYear() + "-" + (todayAux.getMonth() + 1) + "-" + todayAux.getDate();
-
         var f = function(rows){
             var sum = 0;
             
@@ -128,7 +122,8 @@ var pgApi = {
             return sum / rows.length;
         }        
 
-        return runQuery("SELECT temperature FROM sensor_data WHERE sensor_data.measure_date BETWEEN $1 AND $2 AND id_sensor = $3", [daysAgo, today, idSensor], f, "Error on 'getAvgTemperature'");
+        // cambiada la consulta para hacer mas facil la consulta de fechas
+        return runQuery("SELECT temperature FROM sensor_data WHERE sensor_data.measure_date BETWEEN now() - interval '7 day' AND now() AND id_sensor = $1", [idSensor], f, "Error on 'getAvgTemperature'");
 
     },
 
@@ -181,32 +176,42 @@ var pgApi = {
 
     },
 
-    getSchedulesByDate: function(date, timezone, unit){
+    // Returns last irrigation date and humidity before and after or null if no finished irrigation was found
+    // Pass sensor_id of the zone so we don't need to join with zones to get it.
+    getLastIrrigation: function(idZone, idSensor){
 
 
         var f = function(rows){
 
-            var res = [];
-            for(var i = 0; i < rows.length; i++){
-                var time = row[i]["start_date"];
-                res.push(time.getHours() + ":" + time.getMinutes() + ":" + time.getSeconds() + "," + row["duration"]);
-            }
-
-            return res;
+           if(rows.length > 0){
+               return {
+                   start_date: rows[0].start_date,
+                   before: rows[0].hum_before,
+                   after: rows[0].hum_after
+               }
+           }
+           else{
+               return null;
+           }
             
         }
 
-        // codigo copiado del original
-        var startDate = date.split(' ')[0];
-        var startDate = startDate + ' 04:00:00' + timezone;
-        var year = date.split('-')[0];
-        var month = date.split('-')[1];
-        var day = date.split('-')[2].split(' ')[0];
-        var endDate = year + '-' + month + '-' + day + ' ' + '08:00:00' + timezone;
-        
+        var query = `
+            with s as (select * from schedules where status = 'FINISHED' and id_zone = $1 order by start_date desc limit 1)
+            select b.humidity as hum_before, a.humidity as hum_after, (select start_date from s) as start_date
+            FROM
+                (select * from sensor_data where id_sensor = $2 and measure_date <= (select start_date from s) order by measure_date desc limit 1) b,
+                (select * from sensor_data where id_sensor = $2 and measure_date > (select start_date from s) order by measure_date asc limit 1) a
+        `        
 
-        return runQuery("SELECT DISTINCT ON (start_date) * FROM schedules, units, zones WHERE start_date BETWEEN $1 ::TIMESTAMP with TIME ZONE AND $2 ::TIMESTAMP with TIME ZONE AND zones.id_unit = $3 AND zones.id = schedules.id_zone ORDER BY start_date DESC", [startDate, endDate, unit], f, "Error on 'getSchedulesByDate'");
+        return runQuery(query, [idZone, idSensor], f, "Error on 'getLastIrrigation'");
+    },
+
+    // Updates the humidity increase per cycloe of a zone
+    updateIncreasePerCycle: function(idZone, newVal){
+        return runQuery('UPDATE zones SET moisture_increase_per_cycle = $1 WHERE id = $2', [newVal, idZone], null, "Error on 'updateIncreasePerCycle'");
     }
+
 
 }
 

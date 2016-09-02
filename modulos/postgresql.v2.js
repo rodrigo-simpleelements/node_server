@@ -47,13 +47,15 @@ var pgApi = {
             z.id, z.id_sensor, z.id_unit, z.id_plants_type, z.id_soil_type, z.id_system_type, z.id_slope_type, z.id_shade, z.alias as zone_alias, z.zone_number, z.moisture_increase_per_cycle,
             u.zip_code, u.timezone,
             t.alias as system_type_alias, t.code as system_type_code, 
+            sk.precipitation_rate,
             c.max_runtime_minutes,
             sp.irrigation_need  
                 
                 from zones z 
                 JOIN units u ON z.id_unit = u.id 
                 JOIN sensors s ON z.id_sensor = s.id and s.id_unit = u.id
-                JOIN system_types t ON id_system_type = t.id
+                JOIN system_types t ON z.id_system_type = t.id
+                JOIN sprinklers sk ON z.id_sprinkler = sk.id
                 LEFT JOIN soil_sprinklers_slope_data c on z.id_soil_type = c.id_soil_type AND z.id_slope_type = c.id_slope_types AND z.id_sprinkler = c.id_sprinklers
                 LEFT JOIN soil_plants_data sp ON z.id_soil_type = sp.id_soil_type AND z.id_plants_type = sp.id_plants_type
 

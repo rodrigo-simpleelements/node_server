@@ -62,7 +62,7 @@ var SYSTEM_TYPE_SETTINGS = {
         setting: 1.25,
     },
     'Standard':{
-        reqHumidity: 90,
+        reqHumidity: 70,
         setting: 1,
     }
 }
@@ -198,17 +198,36 @@ var runJob = function(){
                     //  Si el QPF (inches) total del día supera o iguala la cantidad necesaria para llevar la humedad a un (no 100%) (valor definido por el setting de la zona, lush lawn que sea 90% y maintain que sea 60% o lo podemos dejar configurable), salir del algoritmo.                    
                     var reqHumidity = SYSTEM_TYPE_SETTINGS[zone.system_type_alias].reqHumidity;
 
+                    // El dato que necesitamos para calcular la cantidad de inches es el que está en la tabla de sprinklers y se llama precipitation_rate.
+                    // Ese valor está en inches per hours, con eso más el valor de maximum_runtime_cycle (que está en minutos) y el de moisture_increase_per_cycle 
+                    // (que es el porcentaje de humedad que se incrementa al regar un ciclo) podes sacar la cantidad de inches necesarias para llevar la humedad al nivel deseado.
+                    // El nivel deseado va a depender de las settings. Voy a querer llegar a un 90% en lush lawn, a un 70% estándar y a un 60% en el caso de maintain.                    
                     
-                    // TODO: revisar el chequeo de QPF ?
+
+                    // numeric se interpreta como string ,necesito parsear
+                    var pRate = zone.precipitation_rate != null ? parseFloat(zone.precipitation_rate) : null; // inches / hour
+                    var maxRuntime = zone.max_runtime_minutes != null ? parseFloat(zone.max_runtime_minutes) : null; // minutes
+                    var increasePerCycle = zone.moisture_increase_per_cycle;
                     
-                    if(zone.irrigation_need == null){
-                        finish("Zone irrigation_need is null");
+                    
+                    if(pRate == null || maxRuntime == null){
+                        finish("Zone precipitation_rate or max_runtime_minutes is null, can not use QPF to calculate.");
                     }
-                    else if (f24hs.qpf >= zone.irrigation_need){
-                        finish("No es necesario regar, humidity + QPF >= req humidity");
-                    }
-                    else{
-                        paso2(f24hs.qpf);
+                    else {
+
+                        // TODO: Revisar estas cuentas/logica
+
+                        var inchesPerCycle = (pRate / 60) * maxRuntime;   // Paso pr a minutos y calculo inches en un ciclo.                         
+                        var reqCycles = reqHumidity / increasePerCycle;  // ciclos necesarios para llegar a la humedad deseada. Usar ciclos completos o fracciones? Se deberia partir de otra humedad?
+                        var reqInches = reqCycles * inchesPerCycle;
+
+
+                        if (f24hs.qpf >= reqInches){
+                            finish("No es necesario regar, QPF >= req humidity");
+                        }
+                        else{
+                            paso2(f24hs.qpf);
+                        }
                     }
                 }
 

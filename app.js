@@ -48,6 +48,11 @@ var runTests = function () {
         .then(function (d) {
             console.log("Update increase per cycle result: ", d);
         });
+
+    pg.insertSchedule(1, new Date(), 1)
+        .then(function (d) {
+            console.log("Insert schedule result: ", d);
+        });
 }
 
 // Init all jobs.

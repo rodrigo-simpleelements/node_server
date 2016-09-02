@@ -212,6 +212,18 @@ var pgApi = {
     // Updates the humidity increase per cycloe of a zone
     updateIncreasePerCycle: function(idZone, newVal){
         return runQuery('UPDATE zones SET moisture_increase_per_cycle = $1 WHERE id = $2', [newVal, idZone], null, "Error on 'updateIncreasePerCycle'");
+    },
+
+
+    
+    insertSchedule: function(idZone, startDate, duration){
+
+        var query = `
+            INSERT INTO schedules(id_zone, start_date, is_automatic, duration, status, is_restriction, remaining_time)
+            VALUES ($1, $2, true, $3, 'PENDING', false, $3)
+        `
+
+        return runQuery(query, [idZone, startDate, duration], null, "Error on 'insertSchedule'");
     }
 
 

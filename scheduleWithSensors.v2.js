@@ -165,15 +165,32 @@ var runJob = function(){
                                 // o se usa el valor de necesidad de riego?
                                 // O los ciclos es ignorando al humedad actual?
 
-                                var reqCycles = Math.ceil(reqHumidity / increasePerCycle);
+                                var fullCycles = Math.floor(reqHumidity / increasePerCycle);
+                                var partialCycle = reqHumidity % increasePerCycle;
 
-                                for (var i = 0; i < reqCycles; i++ ){
-                                    //TODO: Insertar schedule ? segun zone.max_runtime_minutes ?
+                                if(zone.max_runtime_minutes != null){
+                                    
 
+                                    //TODO: Insertar schedules
+
+                                    var fullRunTime = parseFloat(zone.max_runtime_minutes);
+                                    
+                                    var i = 0;
+                                    for (i; i < fullCycles; i++ ){
+                                        // TODO: Insert schedule completo, por cada ciclo
+                                    }
+
+                                    // Si me quedo algun ciclo parcial (un ciclo que no debo ejecutar completo)
+                                    // Se deberia insertar un schedule que no ejecute por max_runtime_minutes ?
+                                    if (partialCycle != 0){
+                                        // TODO: implementar insertar schedule parcial
+                                    }
+
+                                    finish("Consulta de insert en schedule no implementado.");
                                 }
-
-
-                                finish("Consulta de insert en schedule no implementado.");
+                                else{
+                                    finish("max_runtime_minutes de zona es null.");
+                                }
                             }
                             else{
                                 finish("No es necesario regar, necesidad de riego es < 40%");
